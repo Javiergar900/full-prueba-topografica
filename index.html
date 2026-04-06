@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Seguridad Rural - Reportes</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#e74c3c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+            color: #333;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        #app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: #126b7a;
+            color: white;
+            padding: 12px 15px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        .app-title { font-size: 18px; font-weight: 600; }
+        .app-subtitle { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+        
+        .content { flex: 1; display: flex; overflow: hidden; }
+        #map { flex: 1; height: 100%; }
+        .leaflet-control-attribution { display: none !important; }
+        
+        /* Formulario flotante */
+        .form-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .form-container {
+            background: white;
+            border-radius: 12px;
+            width: 100%;
+            max-width: 400px;
+            max-height: 90vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .form-header {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 20px;
+            border-radius: 12px 12px 0 0;
+            position: relative;
+        }
+        
+        .form-title { font-size: 20px; font-weight: 600; }
+        .close-form {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .form-body { padding: 20px; }
+        
+        .step-container { display: none; }
+        .step-container.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+        
+        .step-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ddd;
+            transition: all 0.3s;
+        }
+        .step-dot.active { background: #e74c3c; transform: scale(1.2); }
+        
+        .step-title { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 15px; color: #2c3e50; }
+        .step-description { text-align: center; font-size: 14px; color: #666; margin-bottom: 20px; }
+        
+        .location-instruction {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .location-icon { font-size: 40px; color: #e74c3c; margin-bottom: 15px; }
+        .location-instruction-text { font-size: 16px; margin-bottom: 10px; font-weight: 500; }
+        .location-subtext { font-size: 14px; color: #666; }
+        
+        .location-options {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .location-option-btn {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 18px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+        }
+        
+        .location-option-icon { font-size: 24px; color: #3498db; width: 40px; text-align: center; }
+        .location-option-text { flex: 1; }
+        .location-option-title { font-weight: 600; font-size: 16px; margin-bottom: 5px; color: #2c3e50; }
+        .location-option-desc { font-size: 13px; color: #666; }
+        
+        .map-selector-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+        }
+        
+        .map-selector-header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .map-selector-instructions {
+            background: #f39c12;
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .map-selector-container { flex: 1; position: relative; }
+        .map-selector-map { width: 100%; height: 100%; }
+        
+        .confirm-location-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #27ae60, #219653);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            z-index: 2001;
+        }
+        
+        .location-pin {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -100%);
+            color: #e74c3c;
+            font-size: 40px;
+            pointer-events: none;
+            z-index: 2000;
+        }
+        
+        .location-selected {
+            background: #e8f5e9;
+            border: 2px solid #27ae60;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(39, 174, 96, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); }
+        }
+        
+        .location-selected-icon { font-size: 24px; color: #27ae60; margin-bottom: 10px; }
+        .location-coords { font-family: monospace; font-size: 14px; color: #2c3e50; margin: 5px 0; }
+        .change-location-btn { background: #3498db; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+        
+        .categories {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .category-btn {
+            padding: 15px 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .category-btn.active { border-color: #e74c3c; background: #ffeaea; color: #e74c3c; }
+        .category-icon { font-size: 20px; }
+        .category-label { font-size: 13px; font-weight: 500; }
+        
+        .form-group { margin-bottom: 15px; }
+        .form-label { display: block; font-weight: 500; margin-bottom: 5px; font-size: 14px; color: #555; }
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+        .form-textarea { resize: vertical; min-height: 100px; }
+        
+        .step-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .step-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .step-next { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; }
+        .step-prev { background: #f0f0f0; color: #666; }
+        
+        .btn {
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+        }
+        .btn-primary { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; }
+        
+        .fab {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
+            cursor: pointer;
+            z-index: 900;
+            border: none;
+        }
+        
+        .view-reports-btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            color: #2c3e50;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            z-index: 900;
+        }
+        
+        .download-offline-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 100px;
+            width: 50px;
+            height: 50px;
+            background: #27ae60;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            z-index: 900;
+            border: none;
+        }
+        .download-offline-btn.downloaded { background: #3498db; }
+        
+        .download-progress-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        
+        .download-progress-container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 350px;
+            text-align: center;
+        }
+        
+        .progress-bar-bg {
+            background: #e0e0e0;
+            border-radius: 10px;
+            height: 20px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-bar-fill {
+            background: linear-gradient(135deg, #27ae60, #219653);
+            width: 0%;
+            height: 100%;
+            transition: width 0.3s;
+        }
+        
+        .download-stats { font-size: 13px; color: #666; margin: 8px 0; }
+        .cancel-download-btn { background: #e74c3c; color: white; border: none; padding: 12px 20px; border-radius: 8px; margin-top: 15px; cursor: pointer; }
+        
+        .offline-info {
+            position: fixed;
+            bottom: 90px;
+            left: 20px;
+            background: rgba(0,0,0,0.75);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            z-index: 800;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            backdrop-filter: blur(4px);
+        }
+        
+        .reports-mini {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+            width: 300px;
+            max-height: 70vh;
+            overflow-y: auto;
+            display: none;
+            z-index: 1000;
+        }
+        
+        .reports-header {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .reports-list { padding: 10px; }
+        .report-mini-item { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .report-mini-type { display: inline-block; padding: 3px 8px; background: #e74c3c; color: white; border-radius: 4px; font-size: 11px; margin-bottom: 5px; }
+        .report-mini-desc { font-size: 13px; margin: 5px 0; }
+        
+        .loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .loader-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #e74c3c;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .toast {
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            max-width: 90%;
+        }
+        
+        .leaflet-popup-content { min-width: 250px !important; }
+        
+        .sheets-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #666;
+            border-left: 4px solid #34a853;
+        }
+        
+        .connection-status {
+            position: fixed;
+            bottom: 160px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 999;
+            white-space: nowrap;
+        }
+        .connection-status.online { background: #27ae60; color: white; }
+        .connection-status.offline { background: #e74c3c; color: white; }
+        
+        .install-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1100;
+        }
+        .install-text { font-size: 14px; flex: 1; }
+        .install-buttons { display: flex; gap: 10px; }
+        .install-btn { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
+        .later-btn { background: transparent; color: #ddd; border: 1px solid #ddd; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
+        
+        @media (max-width: 768px) {
+            .form-container { width: 95%; max-height: 85vh; }
+            .categories { grid-template-columns: repeat(2, 1fr); }
+            .reports-mini { width: 90%; left: 5%; right: 5%; }
+            .download-offline-btn { right: 90px; bottom: 15px; width: 45px; height: 45px; font-size: 18px; }
+            .fab { width: 55px; height: 55px; bottom: 15px; right: 15px; }
+            .view-reports-btn { width: 45px; height: 45px; bottom: 15px; left: 15px; }
+            .offline-info { bottom: 85px; font-size: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <div class="app-title">Seguridad Rural</div>
+            <div class="app-subtitle">Reporte Ciudadano - Zona Rural</div>
+        </header>
+        
+        <div class="content">
+            <div id="map"></div>
+        </div>
+        
+        <button class="fab" onclick="showForm()">
+            <i class="fas fa-plus"></i>
+        </button>
+        
+        <button class="view-reports-btn" onclick="toggleReports()" title="Ver mis reportes">
+            <i class="fas fa-list"></i>
+        </button>
+        
+        <button class="download-offline-btn" id="downloadOfflineBtn" onclick="startOfflineDownload()" title="Descargar mapa para usar sin internet">
+            <i class="fas fa-cloud-download-alt"></i>
+        </button>
+        
+        <div id="connectionStatus" class="connection-status" style="display: none;"></div>
+        <div class="offline-info" id="offlineInfo" style="display: none;">
+            <i class="fas fa-download"></i> <span id="offlineInfoText">Mapa descargado</span>
+        </div>
+    </div>
+    
+    <!-- Formulario -->
+    <div class="form-overlay" id="formOverlay">
+        <div class="form-container">
+            <div class="form-header">
+                <button class="close-form" onclick="hideForm()">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="form-title">Nuevo Reporte</div>
+            </div>
+            
+            <div class="form-body">
+                <div class="step-indicator">
+                    <div class="step-dot" id="step1Dot"></div>
+                    <div class="step-dot" id="step2Dot"></div>
+                    <div class="step-dot" id="step3Dot"></div>
+                </div>
+                
+                <!-- Paso 1: Ubicación -->
+                <div class="step-container active" id="step1">
+                    <div class="step-title">Paso 1: ¿Dónde?</div>
+                    <div class="step-description">Primero seleccioná la ubicación del evento</div>
+                    
+                    <div id="locationSelectedDisplay" style="display: none;">
+                        <div class="location-selected">
+                            <div class="location-selected-icon"><i class="fas fa-check-circle"></i></div>
+                            <div>¡Ubicación seleccionada!</div>
+                            <div class="location-coords" id="selectedCoords"></div>
+                            <button type="button" class="change-location-btn" onclick="changeLocation()">
+                                <i class="fas fa-edit"></i> Cambiar ubicación
+                            </button>
+                        </div>
+                        <div class="step-buttons">
+                            <button type="button" class="step-btn step-prev" onclick="hideForm()"><i class="fas fa-times"></i> Cancelar</button>
+                            <button type="button" class="step-btn step-next" onclick="nextStep()">Siguiente <i class="fas fa-arrow-right"></i></button>
+                        </div>
+                    </div>
+                    
+                    <div id="locationNotSelected">
+                        <div class="location-instruction">
+                            <div class="location-icon"><i class="fas fa-map-marker-alt"></i></div>
+                            <div class="location-instruction-text">Seleccioná cómo querés indicar la ubicación</div>
+                            <div class="location-subtext">Podés usar tu ubicación actual o buscar en el mapa</div>
+                        </div>
+                        <div class="location-options">
+                            <button type="button" class="location-option-btn" onclick="useCurrentLocation()">
+                                <div class="location-option-icon"><i class="fas fa-location-crosshairs"></i></div>
+                                <div class="location-option-text">
+                                    <div class="location-option-title">Usar mi ubicación actual</div>
+                                    <div class="location-option-desc">Usa el GPS de tu dispositivo</div>
+                                </div>
+                                <i class="fas fa-chevron-right" style="color: #999;"></i>
+                            </button>
+                            <button type="button" class="location-option-btn" onclick="openMapSelector()">
+                                <div class="location-option-icon"><i class="fas fa-map"></i></div>
+                                <div class="location-option-text">
+                                    <div class="location-option-title">Seleccionar en el mapa</div>
+                                    <div class="location-option-desc">Busca y selecciona manualmente</div>
+                                </div>
+                                <i class="fas fa-chevron-right" style="color: #999;"></i>
+                            </button>
+                        </div>
+                        <button type="button" class="step-btn step-prev" onclick="hideForm()" style="margin-top: 20px;"><i class="fas fa-times"></i> Cancelar</button>
+                    </div>
+                </div>
+                
+                <!-- Paso 2: Categoría -->
+                <div class="step-container" id="step2">
+                    <div class="step-title">Paso 2: ¿Qué pasó?</div>
+                    <div class="step-description">Elegí el tipo de evento</div>
+                    <div class="categories" id="categories">
+                        <div class="category-btn" data-category="robo"><i class="fas fa-gem category-icon"></i><span class="category-label">Robo/Hurto</span></div>
+                        <div class="category-btn" data-category="sospechoso"><i class="fas fa-user-secret category-icon"></i><span class="category-label">Persona Sospechosa</span></div>
+                        <div class="category-btn" data-category="animales"><i class="fas fa-cow category-icon"></i><span class="category-label">Animales/Ganado</span></div>
+                        <div class="category-btn" data-category="vandalismo"><i class="fas fa-spray-can category-icon"></i><span class="category-label">Vandalismo</span></div>
+                        <div class="category-btn" data-category="accidente"><i class="fas fa-car-crash category-icon"></i><span class="category-label">Accidente</span></div>
+                        <div class="category-btn" data-category="incendio"><i class="fas fa-fire category-icon"></i><span class="category-label">Incendio</span></div>
+                        <div class="category-btn" data-category="otros"><i class="fas fa-ellipsis-h category-icon"></i><span class="category-label">Otros</span></div>
+                    </div>
+                    <div class="step-buttons">
+                        <button type="button" class="step-btn step-prev" onclick="prevStep()"><i class="fas fa-arrow-left"></i> Atrás</button>
+                        <button type="button" class="step-btn step-next" onclick="nextStep()" id="nextStep2Btn" disabled>Siguiente <i class="fas fa-arrow-right"></i></button>
+                    </div>
+                </div>
+                
+                <!-- Paso 3: Detalles -->
+                <div class="step-container" id="step3">
+                    <div class="step-title">Paso 3: Aporte mas datos</div>
+                    <div class="step-description">Completá los detalles</div>
+                    <div class="form-group" id="detailsGroup">
+                        <label class="form-label">Tipo específico</label>
+                        <select class="form-select" id="eventDetails"></select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Descripción (opcional)</label>
+                        <textarea class="form-textarea" id="description" placeholder="Inserte aqui todos los detalles posibles"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">¿Cuándo pasó?</label>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <input type="date" class="form-input" id="eventDate">
+                            <input type="time" class="form-input" id="eventTime">
+                        </div>
+                    </div>
+                    <div class="sheets-info"><i class="fas fa-info-circle"></i> Los reportes se guardan localmente y se sincronizan cuando hay conexión</div>
+                    <div class="step-buttons">
+                        <button type="button" class="step-btn step-prev" onclick="prevStep()"><i class="fas fa-arrow-left"></i> Atrás</button>
+                        <button type="button" class="btn btn-primary" onclick="saveReport()"><i class="fas fa-paper-plane"></i> <span id="submitBtnText">Enviar Reporte</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Selector de mapa -->
+    <div class="map-selector-overlay" id="mapSelectorOverlay">
+        <div class="map-selector-header">
+            <div class="map-selector-title">Seleccionar ubicación</div>
+            <button onclick="closeMapSelector()" style="background:none; border:none; color:white; cursor:pointer; font-size:20px;"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="map-selector-instructions"><i class="fas fa-hand-pointer"></i> Tocá en el mapa para seleccionar la ubicación exacta</div>
+        <div class="map-selector-container">
+            <div id="mapSelector" class="map-selector-map"></div>
+            <div class="location-pin"><i class="fas fa-map-pin"></i></div>
+            <button class="confirm-location-btn" id="confirmLocationBtn" onclick="confirmMapLocation()"><i class="fas fa-check"></i> Confirmar esta ubicación</button>
+        </div>
+    </div>
+    
+    <!-- Progress download -->
+    <div class="download-progress-overlay" id="downloadProgressOverlay">
+        <div class="download-progress-container">
+            <div class="download-progress-title"><i class="fas fa-cloud-download-alt"></i> Descargando mapa offline</div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBarFill"></div></div>
+            <div class="download-stats" id="downloadStats">Preparando descarga...</div>
+            <div class="download-stats" id="downloadSpeed"></div>
+            <button class="cancel-download-btn" onclick="cancelDownload()"><i class="fas fa-times"></i> Cancelar</button>
+        </div>
+    </div>
+    
+    <!-- Reports mini -->
+    <div class="reports-mini" id="reportsMini">
+        <div class="reports-header">
+            <span>Mis Reportes</span>
+            <button onclick="toggleReports()" style="background:none; border:none; color:white; cursor:pointer;"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="reports-list" id="reportsList"></div>
+    </div>
+    
+    <!-- Install banner -->
+    <div class="install-banner" id="installBanner">
+        <div class="install-text"><i class="fas fa-download"></i> Instalar app para mejor experiencia offline</div>
+        <div class="install-buttons">
+            <button class="install-btn" onclick="installPWA()">Instalar</button>
+            <button class="later-btn" onclick="hideInstallBanner()">Ahora no</button>
+        </div>
+    </div>
+    
+    <!-- Loader -->
+    <div class="loader" id="loader">
+        <div class="loader-spinner"></div>
+        <div style="margin-top: 15px; font-size: 14px; color: #2c3e50;" id="loaderText">Cargando mapa rural...</div>
+    </div>
+    
+    <div class="toast" id="toast" style="display: none;">
+        <i class="fas fa-check-circle"></i>
+        <span id="toastMessage"></span>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        'use strict';
+        
+        // ==================== CONFIGURACIÓN ====================
+        const CHASCOMUS_COORD = [-35.5762, -58.0104];
+        const SHEETBEST_API = 'https://api.sheetbest.com/sheets/f541beca-e53f-4201-8d8f-feb75f92509b';
+        const APP_VERSION = '1.0.0';
+        
+        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15, 16];
+        const TILE_URL = 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png';
+        const SUBDOMAINS = ['a', 'b', 'c'];
+        
+        // ==================== VARIABLES GLOBALES ====================
+        let map, mapSelector, markersLayer, kmlPolygons = [];
+        let selectedLocation = null;
+        let tempMapLocation = null;
+        let selectedCategory = null;
+        let currentStep = 1;
+        let reports = JSON.parse(localStorage.getItem('chascomus_reports') || '[]');
+        let pendingReports = JSON.parse(localStorage.getItem('chascomus_pending_reports') || '[]');
+        let isOnline = navigator.onLine;
+        let deferredPrompt = null;
+        let isAppInstalled = false;
+        let maskLayer = null;
+        let kmlBounds = null;
+        let kmlPolygonsData = [];
+        
+        // DB y descarga
+        let db = null;
+        let isDownloading = false;
+        let downloadCancelled = false;
+        let downloadedTilesCount = 0;
+        let totalTilesToDownload = 0;
+        let downloadStartTime = 0;
+        let tileQueue = [];
+        let activeDownloads = 0;
+        const MAX_CONCURRENT_DOWNLOADS = 4;
+        
+        const categoryDetails = {
+            robo: ['Robo de campo', 'Robo de vehículo', 'Robo de herramientas', 'Hurto menor', 'Robo con violencia', 'Otro'],
+            sospechoso: ['Persona merodeando', 'Vehiculo sospechoso', 'Actividad nocturna', 'Persona preguntando', 'Ruidos extraños', 'Otro'],
+            animales: ['Animales sueltos', 'Ganado perdido', 'Ataque de animales', 'Animal muerto', 'Animal enfermo', 'Otro'],
+            vandalismo: ['Pintadas', 'Rotura de propiedad', 'Incendio provocado', 'Daño en alambrado', 'Robo de señalización', 'Otro'],
+            accidente: ['Choque', 'Vuelco', 'Atropello de animal', 'Accidente con maquinaria', 'Incidente con personas', 'Otro'],
+            incendio: ['Incendio forestal', 'Incendio de pastizales', 'Incendio estructural', 'Quema no autorizada', 'Principio de incendio', 'Otro'],
+            otros: ['Problema con vecinos', 'Servicios públicos', 'Caminos en mal estado', 'Inundación', 'Evento climático', 'Otro']
+        };
+        
+        // ==================== FUNCIONES GEOMÉTRICAS ====================
+        function isPointInPolygon(point, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i][0], yi = polygon[i][1];
+                const xj = polygon[j][0], yj = polygon[j][1];
+                const intersect = ((yi > point.lat) != (yj > point.lat)) &&
+                    (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+        
+        function rectIntersectsPolygon(rectBounds, polygon) {
+            const corners = [
+                { lat: rectBounds.getSouth(), lng: rectBounds.getWest() },
+                { lat: rectBounds.getSouth(), lng: rectBounds.getEast() },
+                { lat: rectBounds.getNorth(), lng: rectBounds.getWest() },
+                { lat: rectBounds.getNorth(), lng: rectBounds.getEast() }
+            ];
+            for (const corner of corners) {
+                if (isPointInPolygon(corner, polygon)) return true;
+            }
+            for (const vertex of polygon) {
+                if (vertex[0] >= rectBounds.getSouth() && vertex[0] <= rectBounds.getNorth() &&
+                    vertex[1] >= rectBounds.getWest() && vertex[1] <= rectBounds.getEast()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        function getTileBounds(zoom, x, y) {
+            const n = Math.pow(2, zoom);
+            const lngWest = (x / n) * 360 - 180;
+            const lngEast = ((x + 1) / n) * 360 - 180;
+            const latNorth = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180 / Math.PI;
+            const latSouth = Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180 / Math.PI;
+            return L.latLngBounds([latSouth, lngWest], [latNorth, lngEast]);
+        }
+        
+        function getTilesInsideKML(bounds, zoom) {
+            const tiles = [];
+            function latLngToTile(lat, lng, zoom) {
+                const latRad = lat * Math.PI / 180;
+                const n = Math.pow(2, zoom);
+                const x = Math.floor((lng + 180) / 360 * n);
+                const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+                return { x, y };
+            }
+            const topLeft = latLngToTile(bounds.getNorth(), bounds.getWest(), zoom);
+            const bottomRight = latLngToTile(bounds.getSouth(), bounds.getEast(), zoom);
+            const minX = Math.min(topLeft.x, bottomRight.x);
+            const maxX = Math.max(topLeft.x, bottomRight.x);
+            const minY = Math.min(topLeft.y, bottomRight.y);
+            const maxY = Math.max(topLeft.y, bottomRight.y);
+            for (let x = minX; x <= maxX; x++) {
+                for (let y = minY; y <= maxY; y++) {
+                    const tileBounds = getTileBounds(zoom, x, y);
+                    let shouldDownload = false;
+                    for (const polygon of kmlPolygonsData) {
+                        if (rectIntersectsPolygon(tileBounds, polygon.coordinates)) {
+                            shouldDownload = true;
+                            break;
+                        }
+                    }
+                    if (shouldDownload) tiles.push({ zoom, x, y });
+                }
+            }
+            return tiles;
+        }
+        
+        // ==================== INDEXEDDB ====================
+        async function initIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('OfflineMapDB', 2);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    db = request.result;
+                    resolve();
+                };
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('tiles')) {
+                        db.createObjectStore('tiles', { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+        
+        async function getTileFromDB(zoom, x, y) {
+            return new Promise((resolve) => {
+                if (!db) { resolve(null); return; }
+                const transaction = db.transaction(['tiles'], 'readonly');
+                const store = transaction.objectStore('tiles');
+                const request = store.get(`${zoom}_${x}_${y}`);
+                request.onsuccess = () => resolve(request.result ? request.result.data : null);
+                request.onerror = () => resolve(null);
+            });
+        }
+        
+        async function saveTileToDB(zoom, x, y, data) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['tiles'], 'readwrite');
+                const store = transaction.objectStore('tiles');
+                const request = store.put({ id: `${zoom}_${x}_${y}`, zoom, x, y, data, timestamp: Date.now() });
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+        
+        async function getDownloadStats() {
+            if (!db) return { count: 0, lastDownload: null };
+            return new Promise((resolve) => {
+                const transaction = db.transaction(['tiles'], 'readonly');
+                const store = transaction.objectStore('tiles');
+                const request = store.getAll();
+                request.onsuccess = () => {
+                    const tiles = request.result;
+                    let latest = 0;
+                    tiles.forEach(t => { if (t.timestamp > latest) latest = t.timestamp; });
+                    resolve({ count: tiles.length, lastDownload: latest });
+                };
+                request.onerror = () => resolve({ count: 0, lastDownload: null });
+            });
+        }
+        
+        // ==================== TILE LOADER CORREGIDO (FUNCIONA OFFLINE) ====================
+        // Esta es la parte más importante - el fix para que funcione offline
+        
+        class OfflineTileLayer extends L.TileLayer {
+            getTileUrl(coords) {
+                // No devolvemos URL directamente, manejamos todo en _loadTile
+                return '';
+            }
+            
+            _loadTile(tile, tilePoint, zoom) {
+                const x = tilePoint.x;
+                const y = tilePoint.y;
+                const z = zoom;
+                
+                // Primero buscar en caché local
+                getTileFromDB(z, x, y).then(cachedBlob => {
+                    if (cachedBlob) {
+                        // TILE ENCONTRADO EN CACHÉ - usarlo inmediatamente
+                        const url = URL.createObjectURL(cachedBlob);
+                        tile.src = url;
+                        tile.onload = () => {
+                            URL.revokeObjectURL(url);
+                            this._tileOnLoad(tile);
+                        };
+                        tile.onerror = () => {
+                            URL.revokeObjectURL(url);
+                            this._tileOnError(tile);
+                        };
+                        return;
+                    }
+                    
+                    // No está en caché, intentar descargar si hay conexión
+                    if (navigator.onLine) {
+                        const subdomain = SUBDOMAINS[(x + y) % SUBDOMAINS.length];
+                        const url = TILE_URL.replace('{s}', subdomain).replace('{z}', z).replace('{x}', x).replace('{y}', y);
+                        
+                        fetch(url)
+                            .then(response => {
+                                if (!response.ok) throw new Error('HTTP error');
+                                return response.blob();
+                            })
+                            .then(blob => {
+                                // Guardar en caché para futuro uso offline
+                                saveTileToDB(z, x, y, blob).catch(e => console.warn('Error guardando tile:', e));
+                                const url = URL.createObjectURL(blob);
+                                tile.src = url;
+                                tile.onload = () => {
+                                    URL.revokeObjectURL(url);
+                                    this._tileOnLoad(tile);
+                                };
+                                tile.onerror = () => {
+                                    URL.revokeObjectURL(url);
+                                    this._tileOnError(tile);
+                                };
+                            })
+                            .catch(() => {
+                                this._tileOnError(tile);
+                            });
+                    } else {
+                        // Sin conexión y no está en caché - mostrar tile gris
+                        this._tileOnError(tile);
+                    }
+                }).catch(() => {
+                    this._tileOnError(tile);
+                });
+            }
+        }
+        
+        // Crear instancia del tile layer offline
+        const offlineTileLayer = new OfflineTileLayer(TILE_URL, {
+            maxZoom: 20,
+            crossOrigin: true,
+            subdomains: SUBDOMAINS,
+            errorTileUrl: ''
+        });
+        
+        // ==================== DESCARGA DE TILES ====================
+        async function downloadTile(zoom, x, y) {
+            const subdomain = SUBDOMAINS[Math.floor(Math.random() * SUBDOMAINS.length)];
+            const url = TILE_URL.replace('{s}', subdomain).replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await response.blob();
+                await saveTileToDB(zoom, x, y, blob);
+                return true;
+            } catch (error) {
+                return false;
+            }
+        }
+        
+        async function processDownloadQueue() {
+            if (downloadCancelled) return;
+            if (tileQueue.length === 0 && activeDownloads === 0) {
+                // Descarga completa
+                isDownloading = false;
+                document.getElementById('downloadProgressOverlay').style.display = 'none';
+                localStorage.setItem('offline_map_downloaded', Date.now().toString());
+                await updateOfflineInfo();
+                const totalMB = (downloadedTilesCount * 0.5 / 1024).toFixed(1);
+                showToast(`✅ Mapa rural descargado! ${Math.floor(downloadedTilesCount / 1000)}k tiles - ${totalMB} MB`, 'success');
+                return;
+            }
+            
+            while (activeDownloads < MAX_CONCURRENT_DOWNLOADS && tileQueue.length > 0 && !downloadCancelled) {
+                const tile = tileQueue.shift();
+                activeDownloads++;
+                
+                downloadTile(tile.zoom, tile.x, tile.y).then(success => {
+                    activeDownloads--;
+                    if (success) {
+                        downloadedTilesCount++;
+                        const percent = (downloadedTilesCount / totalTilesToDownload) * 100;
+                        document.getElementById('progressBarFill').style.width = `${percent}%`;
+                        const elapsed = (Date.now() - downloadStartTime) / 1000;
+                        const speed = downloadedTilesCount / elapsed;
+                        document.getElementById('downloadSpeed').innerHTML = `⚡ Velocidad: ${speed.toFixed(1)} tiles/seg`;
+                        document.getElementById('downloadStats').innerHTML = `📥 Descargados: ${Math.floor(downloadedTilesCount / 1000)}k / ${Math.floor(totalTilesToDownload / 1000)}k tiles`;
+                    }
+                    processDownloadQueue();
+                });
+            }
+        }
+        
+        async function startOfflineDownload() {
+            if (isDownloading) {
+                showToast('⚠️ Ya hay una descarga en curso', 'warning');
+                return;
+            }
+            if (!kmlBounds || kmlPolygonsData.length === 0) {
+                showToast('❌ Primero debe cargarse el mapa', 'error');
+                return;
+            }
+            
+            const stats = await getDownloadStats();
+            const confirmMsg = stats.count > 0 
+                ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados. ¿Querés actualizar?`
+                : `📱 DESCARGA INTELIGENTE:\n\nSolo se descargarán los tiles DENTRO del área rural.\n\nEsto ocupa aproximadamente 25-35 MB.\n\n¿Continuar?`;
+            
+            if (!confirm(confirmMsg)) return;
+            
+            isDownloading = true;
+            downloadCancelled = false;
+            downloadedTilesCount = 0;
+            activeDownloads = 0;
+            tileQueue = [];
+            downloadStartTime = Date.now();
+            
+            // Armar cola de tiles
+            for (const zoom of TILE_ZOOM_LEVELS) {
+                const tiles = getTilesInsideKML(kmlBounds, zoom);
+                tileQueue.push(...tiles);
+            }
+            totalTilesToDownload = tileQueue.length;
+            
+            document.getElementById('downloadProgressOverlay').style.display = 'flex';
+            document.getElementById('progressBarFill').style.width = '0%';
+            document.getElementById('downloadStats').innerHTML = `📐 Calculados ${Math.floor(totalTilesToDownload / 1000)}k tiles dentro del área rural...`;
+            document.getElementById('downloadSpeed').innerHTML = '';
+            
+            processDownloadQueue();
+        }
+        
+        function cancelDownload() {
+            if (isDownloading) {
+                downloadCancelled = true;
+                tileQueue = [];
+                showToast('Cancelando descarga...', 'info');
+            }
+        }
+        
+        async function updateOfflineInfo() {
+            const stats = await getDownloadStats();
+            const offlineInfo = document.getElementById('offlineInfo');
+            const downloadBtn = document.getElementById('downloadOfflineBtn');
+            if (stats.count > 0) {
+                offlineInfo.style.display = 'flex';
+                const dateStr = stats.lastDownload ? new Date(stats.lastDownload).toLocaleDateString() : 'desconocida';
+                const sizeMB = (stats.count * 0.5 / 1024).toFixed(1);
+                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - ${dateStr})`;
+                downloadBtn.classList.add('downloaded');
+                downloadBtn.title = 'Actualizar mapa offline';
+                downloadBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+            } else {
+                offlineInfo.style.display = 'none';
+                downloadBtn.classList.remove('downloaded');
+                downloadBtn.title = 'Descargar mapa rural (solo área del KML)';
+                downloadBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
+            }
+        }
+        
+        // ==================== INICIALIZACIÓN DEL MAPA ====================
+        function initMap() {
+            map = L.map('map', {
+                center: CHASCOMUS_COORD,
+                zoom: 12,
+                zoomControl: true,
+                attributionControl: false
+            });
+            offlineTileLayer.addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+        }
+        
+        function initMapSelector() {
+            mapSelector = L.map('mapSelector', {
+                center: CHASCOMUS_COORD,
+                zoom: 13,
+                zoomControl: true,
+                attributionControl: false
+            });
+            L.tileLayer(TILE_URL, { maxZoom: 20, subdomains: SUBDOMAINS }).addTo(mapSelector);
+            mapSelector.on('click', function(e) {
+                tempMapLocation = e.latlng;
+                document.getElementById('confirmLocationBtn').style.display = 'flex';
+                showToast('📍 Tocá "Confirmar" para usar esta ubicación');
+            });
+        }
+        
+        // ==================== KML ====================
+        async function loadKML() {
+            const kmlUrl = 'https://raw.githubusercontent.com/Javiergar900/prueba-topografica/main/circunscripciones.kml';
+            try {
+                showToast('🗺️ Cargando límites rurales...');
+                const response = await fetch(kmlUrl);
+                const kmlText = await response.text();
+                const polygons = loadKMLToMap(kmlText);
+                kmlPolygonsData = polygons;
+                localStorage.setItem('chascomus_kml', kmlText);
+                if (polygons && polygons.length > 0) {
+                    createMaskOutsidePolygons(polygons);
+                    limitMapToKMLBounds(polygons);
+                }
+                showToast('✅ Límites cargados correctamente');
+            } catch (error) {
+                const cachedKML = localStorage.getItem('chascomus_kml');
+                if (cachedKML) {
+                    const polygons = loadKMLToMap(cachedKML);
+                    if (polygons && polygons.length > 0) {
+                        createMaskOutsidePolygons(polygons);
+                        limitMapToKMLBounds(polygons);
+                    }
+                }
+            }
+        }
+        
+        function loadKMLToMap(kmlText) {
+            const polygons = parseKML(kmlText);
+            polygons.forEach(polygon => {
+                const poly = L.polygon(polygon.coordinates, {
+                    color: '#2c3e50', weight: 2, opacity: 0.8, fillOpacity: 0.15, fillColor: '#3498db', interactive: false
+                }).bindTooltip(polygon.name, { direction: 'center' }).addTo(map);
+                kmlPolygons.push(poly);
+            });
+            return polygons;
+        }
+        
+        function createMaskOutsidePolygons(polygons) {
+            if (maskLayer) map.removeLayer(maskLayer);
+            const outerRing = [[-90, -180], [-90, 180], [90, 180], [90, -180], [-90, -180]];
+            const holes = polygons.map(p => p.coordinates.slice().reverse());
+            maskLayer = L.polygon([outerRing, ...holes], {
+                color: '#666', weight: 1, opacity: 0.8, fillColor: '#555', fillOpacity: 0.85, interactive: false
+            }).addTo(map);
+            maskLayer.bringToBack();
+        }
+        
+        function limitMapToKMLBounds(polygons) {
+            if (!polygons || polygons.length === 0) return;
+            let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+            polygons.forEach(polygon => {
+                polygon.coordinates.forEach(coord => {
+                    minLat = Math.min(minLat, coord[0]);
+                    maxLat = Math.max(maxLat, coord[0]);
+                    minLng = Math.min(minLng, coord[1]);
+                    maxLng = Math.max(maxLng, coord[1]);
+                });
+            });
+            const padding = 0.02;
+            const bounds = L.latLngBounds([minLat - padding, minLng - padding], [maxLat + padding, maxLng + padding]);
+            kmlBounds = bounds;
+            map.setMaxBounds(bounds);
+            map.fitBounds(bounds);
+        }
+        
+        async function loadKMLToSelector() {
+            const kmlUrl = 'https://raw.githubusercontent.com/Javiergar900/prueba-topografica/main/circunscripciones.kml';
+            try {
+                const response = await fetch(kmlUrl);
+                const kmlText = await response.text();
+                const polygons = parseKML(kmlText);
+                polygons.forEach(polygon => {
+                    L.polygon(polygon.coordinates, { color: '#2c3e50', weight: 2, opacity: 0.5, fillOpacity: 0.1, interactive: false }).addTo(mapSelector);
+                });
+                if (polygons.length) {
+                    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+                    polygons.forEach(p => p.coordinates.forEach(c => {
+                        minLat = Math.min(minLat, c[0]); maxLat = Math.max(maxLat, c[0]);
+                        minLng = Math.min(minLng, c[1]); maxLng = Math.max(maxLng, c[1]);
+                    }));
+                    mapSelector.setMaxBounds(L.latLngBounds([minLat-0.02, minLng-0.02], [maxLat+0.02, maxLng+0.02]));
+                }
+            } catch(e) {}
+        }
+        
+        function parseKML(kmlText) {
+            const parser = new DOMParser();
+            const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+            const polygons = [];
+            const placemarks = kmlDoc.getElementsByTagName('Placemark');
+            for (let i = 0; i < placemarks.length; i++) {
+                let name = `Zona ${i+1}`;
+                const nameEl = placemarks[i].getElementsByTagName('name');
+                if (nameEl.length) name = nameEl[0].textContent;
+                const coordEls = placemarks[i].getElementsByTagName('coordinates');
+                for (let el of coordEls) {
+                    const coords = parseCoordinates(el.textContent.trim());
+                    if (coords.length > 2) polygons.push({ name, coordinates: coords });
+                }
+            }
+            return polygons;
+        }
+        
+        function parseCoordinates(text) {
+            const coords = [];
+            const parts = text.split(/\s+/);
+            for (let part of parts) {
+                if (!part.trim()) continue;
+                const [lng, lat] = part.split(',').map(Number);
+                if (!isNaN(lat) && !isNaN(lng)) coords.push([lat, lng]);
+            }
+            return coords;
+        }
+        
+        // ==================== FORMULARIO Y REPORTES ====================
+        function setupCategories() {
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    selectedCategory = this.dataset.category;
+                    document.getElementById('nextStep2Btn').disabled = false;
+                    if (currentStep === 3) showCategoryDetails();
+                });
+            });
+        }
+        
+        function showCategoryDetails() {
+            const select = document.getElementById('eventDetails');
+            if (selectedCategory && categoryDetails[selectedCategory]) {
+                document.getElementById('detailsGroup').style.display = 'block';
+                select.innerHTML = '<option value="">Seleccionar tipo específico</option>';
+                categoryDetails[selectedCategory].forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d; opt.textContent = d;
+                    select.appendChild(opt);
+                });
+            } else {
+                document.getElementById('detailsGroup').style.display = 'none';
+            }
+        }
+        
+        function useCurrentLocation() {
+            if (!navigator.geolocation) { showToast('❌ No soporta geolocalización', 'error'); return; }
+            showToast('📍 Obteniendo ubicación...');
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    selectedLocation = L.latLng(pos.coords.latitude, pos.coords.longitude);
+                    if (kmlBounds && !kmlBounds.contains(selectedLocation)) showToast('⚠️ Fuera del área rural', 'warning');
+                    map.setView(selectedLocation, 16);
+                    updateLocationStepDisplay();
+                    showToast('✅ Ubicación obtenida');
+                },
+                () => { showToast('❌ No se pudo obtener', 'error'); }
+            );
+        }
+        
+        function openMapSelector() {
+            document.getElementById('formOverlay').style.display = 'none';
+            document.getElementById('mapSelectorOverlay').style.display = 'flex';
+            if (selectedLocation) {
+                mapSelector.setView(selectedLocation, 16);
+                tempMapLocation = selectedLocation;
+                document.getElementById('confirmLocationBtn').style.display = 'flex';
+            } else {
+                mapSelector.setView(CHASCOMUS_COORD, 13);
+                document.getElementById('confirmLocationBtn').style.display = 'none';
+            }
+            setTimeout(() => mapSelector.invalidateSize(), 100);
+        }
+        
+        function closeMapSelector() {
+            document.getElementById('mapSelectorOverlay').style.display = 'none';
+            document.getElementById('formOverlay').style.display = 'flex';
+        }
+        
+        function confirmMapLocation() {
+            if (!tempMapLocation) { showToast('❌ Seleccioná un punto', 'error'); return; }
+            selectedLocation = tempMapLocation;
+            if (kmlBounds && !kmlBounds.contains(selectedLocation)) showToast('⚠️ Fuera del área rural', 'warning');
+            closeMapSelector();
+            map.setView(selectedLocation, 16);
+            updateLocationStepDisplay();
+            showToast('📍 Ubicación seleccionada');
+        }
+        
+        function updateLocationStepDisplay() {
+            if (selectedLocation) {
+                document.getElementById('selectedCoords').textContent = `${selectedLocation.lat.toFixed(5)}, ${selectedLocation.lng.toFixed(5)}`;
+                document.getElementById('locationSelectedDisplay').style.display = 'block';
+                document.getElementById('locationNotSelected').style.display = 'none';
+            } else {
+                document.getElementById('locationSelectedDisplay').style.display = 'none';
+                document.getElementById('locationNotSelected').style.display = 'block';
+            }
+        }
+        
+        function changeLocation() { selectedLocation = null; updateLocationStepDisplay(); }
+        function showForm() { document.getElementById('formOverlay').style.display = 'flex'; goToStep(1); updateConnectionStatus(); }
+        function hideForm() { document.getElementById('formOverlay').style.display = 'none'; resetForm(); }
+        
+        function resetForm() {
+            goToStep(1);
+            document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('detailsGroup').style.display = 'none';
+            document.getElementById('description').value = '';
+            selectedCategory = null;
+            document.getElementById('nextStep2Btn').disabled = true;
+        }
+        
+        function goToStep(step) {
+            currentStep = step;
+            document.querySelectorAll('.step-container').forEach(el => el.classList.remove('active'));
+            document.getElementById(`step${step}`).classList.add('active');
+            document.querySelectorAll('.step-dot').forEach((dot, i) => i < step ? dot.classList.add('active') : dot.classList.remove('active'));
+            if (step === 1) updateLocationStepDisplay();
+            if (step === 3 && selectedCategory) showCategoryDetails();
+        }
+        
+        function nextStep() {
+            if (currentStep === 1) {
+                if (!selectedLocation) { showToast('❌ Seleccioná ubicación', 'error'); return; }
+                goToStep(2);
+            } else if (currentStep === 2) {
+                if (!selectedCategory) { showToast('❌ Seleccioná categoría', 'error'); return; }
+                goToStep(3);
+            }
+        }
+        
+        function prevStep() { if (currentStep > 1) goToStep(currentStep - 1); }
+        
+        async function saveReportToSheet(report) {
+            try {
+                const response = await fetch(SHEETBEST_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        'Fecha': report.date, 'Hora': report.time, 'Categoría': report.category,
+                        'Detalles': report.details, 'Descripción': report.description,
+                        'Latitud': report.location.lat, 'Longitud': report.location.lng,
+                        'Timestamp': report.timestamp, 'Estado': 'Enviado', 'Versión App': APP_VERSION
+                    })
+                });
+                return response.ok;
+            } catch { return false; }
+        }
+        
+        async function syncPendingReports() {
+            if (syncInProgress || !isOnline || pendingReports.length === 0) return;
+            syncInProgress = true;
+            showToast(`🔄 Sincronizando ${pendingReports.length} reportes...`, 'info');
+            const pendingCopy = [...pendingReports];
+            for (const report of pendingCopy) {
+                const success = await saveReportToSheet(report);
+                if (success) {
+                    const idx = reports.findIndex(r => r.id === report.id);
+                    if (idx !== -1) reports[idx].synced = true;
+                    const pIdx = pendingReports.findIndex(r => r.id === report.id);
+                    if (pIdx !== -1) pendingReports.splice(pIdx, 1);
+                }
+                await new Promise(r => setTimeout(r, 300));
+            }
+            localStorage.setItem('chascomus_reports', JSON.stringify(reports));
+            localStorage.setItem('chascomus_pending_reports', JSON.stringify(pendingReports));
+            syncInProgress = false;
+            updateSyncButton();
+            if (pendingCopy.length) showToast(`✅ Sincronizados ${pendingCopy.length} reportes`);
+            updateReportsList();
+        }
+        
+        let syncInProgress = false;
+        
+        function saveReport() {
+            if (!selectedCategory) { showToast('❌ Seleccioná categoría', 'error'); return; }
+            if (!selectedLocation) { showToast('❌ Seleccioná ubicación', 'error'); return; }
+            
+            const category = document.querySelector('.category-btn.active .category-label').textContent;
+            const details = document.getElementById('eventDetails').value || 'No especificado';
+            const description = document.getElementById('description').value.trim() || 'Sin descripción';
+            const date = document.getElementById('eventDate').value;
+            const time = document.getElementById('eventTime').value;
+            
+            const report = {
+                id: Date.now(), category, details, description, date, time,
+                location: { lat: selectedLocation.lat, lng: selectedLocation.lng },
+                timestamp: new Date().toISOString(), synced: false
+            };
+            
+            reports.unshift(report);
+            localStorage.setItem('chascomus_reports', JSON.stringify(reports));
+            addMarker(report);
+            
+            if (isOnline) {
+                saveReportToSheet(report).then(success => {
+                    if (success) {
+                        report.synced = true;
+                        const idx = reports.findIndex(r => r.id === report.id);
+                        if (idx !== -1) reports[idx].synced = true;
+                        localStorage.setItem('chascomus_reports', JSON.stringify(reports));
+                        showToast('✅ Reporte enviado');
+                    } else {
+                        pendingReports.push(report);
+                        localStorage.setItem('chascomus_pending_reports', JSON.stringify(pendingReports));
+                        showToast('⚠️ Guardado localmente', 'warning');
+                        updateSyncButton();
+                    }
+                }).catch(() => {
+                    pendingReports.push(report);
+                    localStorage.setItem('chascomus_pending_reports', JSON.stringify(pendingReports));
+                    showToast('⚠️ Guardado localmente', 'warning');
+                    updateSyncButton();
+                });
+            } else {
+                pendingReports.push(report);
+                localStorage.setItem('chascomus_pending_reports', JSON.stringify(pendingReports));
+                showToast('📱 Guardado localmente', 'warning');
+                updateSyncButton();
+            }
+            
+            hideForm();
+            updateReportsList();
+        }
+        
+        function addMarker(report) {
+            const colors = { 'Robo/Hurto': '#e74c3c', 'Persona Sospechosa': '#f39c12', 'Animales/Ganado': '#27ae60', 'Vandalismo': '#8e44ad', 'Accidente': '#3498db', 'Incendio': '#d35400', 'Otros': '#7f8c8d' };
+            const color = colors[report.category] || '#2c3e50';
+            const syncIcon = report.synced ? '✓' : '⏳';
+            const marker = L.marker([report.location.lat, report.location.lng], {
+                icon: L.divIcon({ html: `<div style="background:${color};width:28px;height:28px;border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:bold;">${syncIcon}</div>` })
+            }).addTo(markersLayer);
+            marker.bindPopup(`<div><h4 style="color:${color};">${report.category}</h4><p>${report.description}</p><hr><div><strong>Fecha:</strong> ${report.date} ${report.time}</div><div><strong>Estado:</strong> ${report.synced ? '✓ Enviado' : '⏳ Pendiente'}</div></div>`);
+            marker.reportId = report.id;
+        }
+        
+        function loadExistingReports() { reports.forEach(r => addMarker(r)); updateReportsList(); }
+        
+        function updateReportsList() {
+            const container = document.getElementById('reportsList');
+            if (!reports.length) {
+                container.innerHTML = `<div style="text-align:center;padding:30px;color:#999;"><i class="fas fa-inbox" style="font-size:40px;"></i><p>No hay reportes</p></div>`;
+                return;
+            }
+            let html = '';
+            reports.slice(0, 10).forEach(r => {
+                const pending = pendingReports.some(p => p.id === r.id);
+                html += `<div class="report-mini-item" onclick="viewReport(${r.id})"><div class="report-mini-type">${r.category} ${r.synced ? '✓' : '⏳'}</div><div class="report-mini-desc">${r.description.substring(0, 60)}</div><div style="font-size:11px;color:#999;">${r.date} ${r.time}${pending ? ' (Pendiente)' : ''}</div></div>`;
+            });
+            container.innerHTML = html;
+        }
+        
+        function viewReport(id) {
+            const report = reports.find(r => r.id === id);
+            if (!report) return;
+            map.setView([report.location.lat, report.location.lng], 16);
+            markersLayer.eachLayer(layer => { if (layer.reportId === id) layer.openPopup(); });
+            toggleReports();
+        }
+        
+        function toggleReports() {
+            const mini = document.getElementById('reportsMini');
+            mini.style.display = mini.style.display === 'block' ? 'none' : 'block';
+            if (mini.style.display === 'block') updateReportsList();
+        }
+        
+        function updateConnectionStatus() {
+            const statusDiv = document.getElementById('connectionStatus');
+            const submitBtn = document.getElementById('submitBtnText');
+            if (isOnline) {
+                statusDiv.className = 'connection-status online';
+                statusDiv.innerHTML = '<i class="fas fa-wifi"></i> En línea';
+                submitBtn.textContent = 'Enviar Reporte';
+                statusDiv.style.display = 'flex';
+            } else {
+                statusDiv.className = 'connection-status offline';
+                statusDiv.innerHTML = '<i class="fas fa-signal-slash"></i> Sin conexión';
+                submitBtn.textContent = 'Guardar Localmente';
+                statusDiv.style.display = 'flex';
+            }
+            updateSyncButton();
+        }
+        
+        function addSyncButton() {
+            if (!document.getElementById('syncButton')) {
+                const btn = document.createElement('button');
+                btn.id = 'syncButton';
+                btn.className = 'sync-btn';
+                btn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+                btn.onclick = syncPendingReports;
+                document.body.appendChild(btn);
+            }
+            updateSyncButton();
+        }
+        
+        function updateSyncButton() {
+            const btn = document.getElementById('syncButton');
+            if (btn) btn.style.display = (pendingReports.length > 0 && isOnline) ? 'flex' : 'none';
+        }
+        
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = toast.querySelector('i');
+            const text = document.getElementById('toastMessage');
+            text.textContent = msg;
+            if (type === 'error') { toast.style.background = '#e74c3c'; icon.className = 'fas fa-exclamation-circle'; }
+            else if (type === 'warning') { toast.style.background = '#f39c12'; icon.className = 'fas fa-exclamation-triangle'; }
+            else { toast.style.background = '#27ae60'; icon.className = 'fas fa-check-circle'; }
+            toast.style.display = 'flex';
+            setTimeout(() => toast.style.display = 'none', 3000);
+        }
+        
+        function showInstallBanner() {
+            if (deferredPrompt && !isAppInstalled) {
+                document.getElementById('installBanner').style.display = 'flex';
+                setTimeout(() => hideInstallBanner(), 30000);
+            }
+        }
+        function hideInstallBanner() { document.getElementById('installBanner').style.display = 'none'; }
+        async function installPWA() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') { showToast('✅ App instalada'); isAppInstalled = true; hideInstallBanner(); }
+            deferredPrompt = null;
+        }
+        async function checkServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                try { await navigator.serviceWorker.register('sw.js'); } catch(e) {}
+            }
+        }
+        
+        // ==================== INICIALIZACIÓN PRINCIPAL ====================
+        window.addEventListener('online', () => { isOnline = true; updateConnectionStatus(); showToast('✅ Conexión restablecida'); syncPendingReports(); });
+        window.addEventListener('offline', () => { isOnline = false; updateConnectionStatus(); showToast('⚠️ Sin conexión - Usando mapa offline', 'warning'); });
+        window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (!isAppInstalled) setTimeout(() => showInstallBanner(), 5000); });
+        
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initIndexedDB();
+            
+            const now = new Date();
+            document.getElementById('eventDate').value = now.toISOString().split('T')[0];
+            document.getElementById('eventTime').value = now.toTimeString().slice(0, 5);
+            
+            initMap();
+            initMapSelector();
+            await loadKML();
+            await loadKMLToSelector();
+            loadExistingReports();
+            setupCategories();
+            updateConnectionStatus();
+            addSyncButton();
+            checkServiceWorker();
+            await updateOfflineInfo();
+            
+            if (isOnline && pendingReports.length) setTimeout(() => syncPendingReports(), 2000);
+            setTimeout(() => { document.getElementById('loader').style.display = 'none'; if (deferredPrompt && !isAppInstalled) setTimeout(() => showInstallBanner(), 1000); }, 1500);
+        });
+        
+        // Exponer funciones globales
+        window.showForm = showForm;
+        window.hideForm = hideForm;
+        window.useCurrentLocation = useCurrentLocation;
+        window.openMapSelector = openMapSelector;
+        window.closeMapSelector = closeMapSelector;
+        window.confirmMapLocation = confirmMapLocation;
+        window.changeLocation = changeLocation;
+        window.saveReport = saveReport;
+        window.toggleReports = toggleReports;
+        window.viewReport = viewReport;
+        window.syncPendingReports = syncPendingReports;
+        window.installPWA = installPWA;
+        window.hideInstallBanner = hideInstallBanner;
+        window.nextStep = nextStep;
+        window.prevStep = prevStep;
+        window.startOfflineDownload = startOfflineDownload;
+        window.cancelDownload = cancelDownload;
+    </script>
+</body>
+</html>
