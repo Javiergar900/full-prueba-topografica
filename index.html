@@ -47,10 +47,7 @@
             border: 1px solid rgba(255,255,255,0.2);
         }
         
-        .zoom-indicator i {
-            margin-right: 5px;
-            color: #27ae60;
-        }
+        .zoom-indicator i { margin-right: 5px; color: #27ae60; }
         
         /* Formulario */
         .form-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
@@ -178,14 +175,13 @@
         </header>
         <div class="content">
             <div id="map"></div>
-            <!-- Indicador de zoom -->
             <div class="zoom-indicator" id="zoomIndicator">
                 <i class="fas fa-search"></i> Zoom: <span id="zoomLevel">12</span>
             </div>
         </div>
         <button class="fab" onclick="showForm()"><i class="fas fa-plus"></i></button>
         <button class="view-reports-btn" onclick="toggleReports()" title="Ver mis reportes"><i class="fas fa-list"></i></button>
-        <button class="download-offline-btn" id="downloadOfflineBtn" onclick="startOfflineDownload()" title="Descargar mapa (zoom 10 a 16)"><i class="fas fa-cloud-download-alt"></i></button>
+        <button class="download-offline-btn" id="downloadOfflineBtn" onclick="startOfflineDownload()" title="Descargar mapa completo (zoom 10 a 16)"><i class="fas fa-cloud-download-alt"></i></button>
         <div id="connectionStatus" class="connection-status" style="display: none;"></div>
         <div class="offline-info" id="offlineInfo" style="display: none;"><i class="fas fa-download"></i> <span id="offlineInfoText">Mapa descargado</span></div>
     </div>
@@ -204,7 +200,6 @@
                     <div class="step-dot" id="step3Dot"></div>
                 </div>
                 
-                <!-- Paso 1 -->
                 <div class="step-container active" id="step1">
                     <div class="step-title">Paso 1: ¿Dónde?</div>
                     <div class="step-description">Primero seleccioná la ubicación del evento</div>
@@ -248,7 +243,6 @@
                     </div>
                 </div>
                 
-                <!-- Paso 2 -->
                 <div class="step-container" id="step2">
                     <div class="step-title">Paso 2: ¿Qué pasó?</div>
                     <div class="step-description">Elegí el tipo de evento</div>
@@ -267,7 +261,6 @@
                     </div>
                 </div>
                 
-                <!-- Paso 3 -->
                 <div class="step-container" id="step3">
                     <div class="step-title">Paso 3: Aporte mas datos</div>
                     <div class="step-description">Completá los detalles</div>
@@ -296,7 +289,6 @@
         </div>
     </div>
     
-    <!-- Selector de mapa -->
     <div class="map-selector-overlay" id="mapSelectorOverlay">
         <div class="map-selector-header">
             <div class="map-selector-title">Seleccionar ubicación</div>
@@ -310,7 +302,6 @@
         </div>
     </div>
     
-    <!-- Progress download -->
     <div class="download-progress-overlay" id="downloadProgressOverlay">
         <div class="download-progress-container">
             <div class="download-progress-title"><i class="fas fa-cloud-download-alt"></i> Descargando mapa offline</div>
@@ -322,7 +313,6 @@
         </div>
     </div>
     
-    <!-- Reports mini -->
     <div class="reports-mini" id="reportsMini">
         <div class="reports-header">
             <span>Mis Reportes</span>
@@ -331,7 +321,6 @@
         <div class="reports-list" id="reportsList"></div>
     </div>
     
-    <!-- Install banner -->
     <div class="install-banner" id="installBanner">
         <div class="install-text"><i class="fas fa-download"></i> Instalar app para mejor experiencia offline</div>
         <div class="install-buttons">
@@ -340,7 +329,6 @@
         </div>
     </div>
     
-    <!-- Loader -->
     <div class="loader" id="loader">
         <div class="loader-spinner"></div>
         <div style="margin-top: 15px; font-size: 14px; color: #2c3e50;" id="loaderText">Cargando mapa rural...</div>
@@ -382,14 +370,12 @@
         let kmlPolygonsData = [];
         let tileLayer = null;
         
-        // DB y descarga
         let db = null;
         let isDownloading = false;
         let downloadCancelled = false;
         let downloadedTilesCount = 0;
         let totalTilesToDownload = 0;
         let downloadStartTime = 0;
-        let currentZoomIndex = 0;
         
         const categoryDetails = {
             robo: ['Robo de campo', 'Robo de vehículo', 'Robo de herramientas', 'Hurto menor', 'Robo con violencia', 'Otro'],
@@ -414,25 +400,6 @@
             return inside;
         }
         
-        function rectIntersectsPolygon(rectBounds, polygon) {
-            const corners = [
-                { lat: rectBounds.getSouth(), lng: rectBounds.getWest() },
-                { lat: rectBounds.getSouth(), lng: rectBounds.getEast() },
-                { lat: rectBounds.getNorth(), lng: rectBounds.getWest() },
-                { lat: rectBounds.getNorth(), lng: rectBounds.getEast() }
-            ];
-            for (const corner of corners) {
-                if (isPointInPolygon(corner, polygon)) return true;
-            }
-            for (const vertex of polygon) {
-                if (vertex[0] >= rectBounds.getSouth() && vertex[0] <= rectBounds.getNorth() &&
-                    vertex[1] >= rectBounds.getWest() && vertex[1] <= rectBounds.getEast()) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        
         function getTileBounds(zoom, x, y) {
             const n = Math.pow(2, zoom);
             const lngWest = (x / n) * 360 - 180;
@@ -442,6 +409,7 @@
             return L.latLngBounds([latSouth, lngWest], [latNorth, lngEast]);
         }
         
+        // ==================== FUNCIÓN CORREGIDA - DESCARGA TODOS LOS TILES DEL RECTÁNGULO ====================
         function getTilesInsideKML(bounds, zoom) {
             const tiles = [];
             function latLngToTile(lat, lng, zoom) {
@@ -451,23 +419,20 @@
                 const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
                 return { x, y };
             }
+            
+            // Padding de 2 tiles para cubrir bordes (evita grises al hacer zoom)
+            const padding = 2;
             const topLeft = latLngToTile(bounds.getNorth(), bounds.getWest(), zoom);
             const bottomRight = latLngToTile(bounds.getSouth(), bounds.getEast(), zoom);
-            const minX = Math.min(topLeft.x, bottomRight.x);
-            const maxX = Math.max(topLeft.x, bottomRight.x);
-            const minY = Math.min(topLeft.y, bottomRight.y);
-            const maxY = Math.max(topLeft.y, bottomRight.y);
+            
+            const minX = Math.min(topLeft.x, bottomRight.x) - padding;
+            const maxX = Math.max(topLeft.x, bottomRight.x) + padding;
+            const minY = Math.min(topLeft.y, bottomRight.y) - padding;
+            const maxY = Math.max(topLeft.y, bottomRight.y) + padding;
+            
             for (let x = minX; x <= maxX; x++) {
                 for (let y = minY; y <= maxY; y++) {
-                    const tileBounds = getTileBounds(zoom, x, y);
-                    let shouldDownload = false;
-                    for (const polygon of kmlPolygonsData) {
-                        if (rectIntersectsPolygon(tileBounds, polygon.coordinates)) {
-                            shouldDownload = true;
-                            break;
-                        }
-                    }
-                    if (shouldDownload) tiles.push({ zoom, x, y });
+                    tiles.push({ zoom, x, y });
                 }
             }
             return tiles;
@@ -589,14 +554,13 @@
             });
         }
         
-        // ==================== FUNCIÓN PARA ACTUALIZAR INDICADOR DE ZOOM ====================
+        // ==================== ACTUALIZAR INDICADOR DE ZOOM ====================
         function updateZoomIndicator() {
             if (map) {
                 const zoom = map.getZoom();
                 const zoomElement = document.getElementById('zoomLevel');
                 if (zoomElement) {
                     zoomElement.textContent = zoom;
-                    // Cambiar color según el nivel de zoom
                     if (zoom >= 14) {
                         zoomElement.style.color = '#27ae60';
                     } else if (zoom >= 12) {
@@ -636,7 +600,7 @@
             const stats = await getDownloadStats();
             const confirmMsg = stats.count > 0 
                 ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados. ¿Querés actualizar?`
-                : `📱 DESCARGA INTELIGENTE:\n\nSe descargarán los tiles DENTRO del área rural.\n\nNiveles de zoom: 10 al 16 (óptimo para offline)\nEspacio aproximado: 40-50 MB\nTiempo estimado: 3-5 minutos\n\n¿Continuar?`;
+                : `📱 DESCARGA COMPLETA DEL ÁREA RURAL:\n\nSe descargarán TODOS los tiles del área (con bordes incluidos).\n\nNiveles de zoom: 10 al 16\nEspacio aproximado: 50-70 MB\nTiempo estimado: 3-5 minutos\n\n¿Continuar?`;
             
             if (!confirm(confirmMsg)) return;
             
@@ -645,11 +609,9 @@
             downloadedTilesCount = 0;
             totalTilesToDownload = 0;
             downloadStartTime = Date.now();
-            currentZoomIndex = 0;
             
             document.getElementById('downloadProgressOverlay').style.display = 'flex';
             
-            // Calcular total de tiles primero
             let allTilesByZoom = [];
             for (const zoom of TILE_ZOOM_LEVELS) {
                 if (downloadCancelled) break;
@@ -660,10 +622,8 @@
             
             let accumulatedDownloaded = 0;
             
-            // Descargar por niveles de zoom
             for (let idx = 0; idx < allTilesByZoom.length && !downloadCancelled; idx++) {
                 const { zoom, tiles } = allTilesByZoom[idx];
-                currentZoomIndex = zoom;
                 
                 document.getElementById('currentZoomLevel').innerHTML = `📍 Nivel de zoom ${zoom} - ${Math.floor(tiles.length / 1000)}k tiles`;
                 document.getElementById('progressBarFill').style.width = `${(accumulatedDownloaded / totalTilesToDownload) * 100}%`;
@@ -702,7 +662,7 @@
                 localStorage.setItem('offline_map_downloaded', Date.now().toString());
                 await updateOfflineInfo();
                 const totalMB = (downloadedTilesCount * 0.5 / 1024).toFixed(1);
-                showToast(`✅ Mapa descargado! ${Math.floor(downloadedTilesCount / 1000)}k tiles - ${totalMB} MB`, 'success');
+                showToast(`✅ Mapa COMPLETO descargado! ${Math.floor(downloadedTilesCount / 1000)}k tiles - ${totalMB} MB`, 'success');
             }
         }
         
@@ -721,14 +681,14 @@
                 offlineInfo.style.display = 'flex';
                 const dateStr = stats.lastDownload ? new Date(stats.lastDownload).toLocaleDateString() : 'desconocida';
                 const sizeMB = (stats.count * 0.5 / 1024).toFixed(1);
-                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - zoom 10-16)`;
+                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - área completa)`;
                 downloadBtn.classList.add('downloaded');
                 downloadBtn.title = 'Actualizar mapa offline';
                 downloadBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
             } else {
                 offlineInfo.style.display = 'none';
                 downloadBtn.classList.remove('downloaded');
-                downloadBtn.title = 'Descargar mapa rural (zoom 10 a 16)';
+                downloadBtn.title = 'Descargar mapa rural (área completa)';
                 downloadBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
             }
         }
@@ -747,14 +707,11 @@
             tileLayer = createOfflineFirstTileLayer();
             tileLayer.addTo(map);
             
-            // Actualizar indicador de zoom cuando cambia
             map.on('zoomend', function() {
                 updateZoomIndicator();
             });
             
             markersLayer = L.layerGroup().addTo(map);
-            
-            // Inicializar indicador
             updateZoomIndicator();
         }
         
@@ -1242,7 +1199,6 @@
             setTimeout(() => { document.getElementById('loader').style.display = 'none'; if (deferredPrompt && !isAppInstalled) setTimeout(() => showInstallBanner(), 1000); }, 1500);
         });
         
-        // Exponer funciones globales
         window.showForm = showForm;
         window.hideForm = hideForm;
         window.useCurrentLocation = useCurrentLocation;
