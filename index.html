@@ -330,8 +330,9 @@
         const SHEETBEST_API = 'https://api.sheetbest.com/sheets/f541beca-e53f-4201-8d8f-feb75f92509b';
         const APP_VERSION = '1.0.0';
         
+        // OpenStreetMap estándar - el más confiable y compatible
         const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15];
-        const TILE_URL = 'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png';
+        const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         const SUBDOMAINS = ['a', 'b', 'c'];
         
         // ==================== VARIABLES GLOBALES ====================
@@ -495,49 +496,8 @@
             });
         }
         
-        // ==================== TILE LAYER CON CACHÉ (VERSIÓN SIMPLE Y QUE ANDA) ====================
-        function createCachedTileLayer() {
-            // Crear el tile layer normal
-            const layer = L.tileLayer(TILE_URL, {
-                maxZoom: 20,
-                subdomains: SUBDOMAINS,
-                crossOrigin: true
-            });
-            
-            // Guardar referencia al método original
-            const originalGetTileUrl = layer.getTileUrl;
-            
-            // Sobrescribir para interceptar y guardar en caché
-            layer.getTileUrl = function(coords) {
-                const url = originalGetTileUrl.call(this, coords);
-                const x = coords.x;
-                const y = coords.y;
-                const z = coords.z;
-                
-                // Si hay conexión, intentar guardar el tile en caché después de que se cargue
-                if (navigator.onLine) {
-                    // Usar fetch para obtener el blob y guardarlo
-                    fetch(url)
-                        .then(response => {
-                            if (response.ok) return response.blob();
-                            throw new Error('Failed to fetch');
-                        })
-                        .then(blob => {
-                            saveTileToDB(z, x, y, blob).catch(e => console.warn('Error saving tile:', e));
-                        })
-                        .catch(() => {});
-                }
-                
-                return url;
-            };
-            
-            return layer;
-        }
-        
-        // ==================== FUNCIÓN PARA CARGAR TILES OFFLINE ====================
-        // Esta función crea un tile layer que usa caché primero
+        // ==================== TILE LAYER CON CACHÉ PARA OPENSTREETMAP ====================
         function createOfflineFirstTileLayer() {
-            // Extender L.TileLayer
             const OfflineTileLayer = L.TileLayer.extend({
                 getTileUrl: function(coords) {
                     return L.TileLayer.prototype.getTileUrl.call(this, coords);
@@ -548,10 +508,8 @@
                     const y = tilePoint.y;
                     const z = zoom;
                     
-                    // Intentar obtener de caché primero
                     getTileFromDB(z, x, y).then(blob => {
                         if (blob) {
-                            // Tile en caché - usarlo
                             const url = URL.createObjectURL(blob);
                             tile.src = url;
                             tile.onload = () => {
@@ -565,13 +523,11 @@
                             return;
                         }
                         
-                        // No está en caché - usar URL normal
                         const url = this.getTileUrl(tilePoint);
                         tile.src = url;
                         tile.onload = () => this._tileOnLoad(tile);
                         tile.onerror = () => this._tileOnError(tile);
                         
-                        // Si hay conexión, guardar para futuro
                         if (navigator.onLine) {
                             fetch(url)
                                 .then(response => {
@@ -584,7 +540,6 @@
                                 .catch(() => {});
                         }
                     }).catch(() => {
-                        // Error con IndexedDB, usar URL normal
                         const url = this.getTileUrl(tilePoint);
                         tile.src = url;
                         tile.onload = () => this._tileOnLoad(tile);
@@ -597,7 +552,7 @@
                 maxZoom: 20,
                 subdomains: SUBDOMAINS,
                 crossOrigin: true,
-                errorTileUrl: ''
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             });
         }
         
@@ -638,7 +593,6 @@
             downloadedTilesCount = 0;
             downloadStartTime = Date.now();
             
-            // Armar lista de tiles
             const allTiles = [];
             for (const zoom of TILE_ZOOM_LEVELS) {
                 const tiles = getTilesInsideKML(kmlBounds, zoom);
@@ -650,7 +604,6 @@
             document.getElementById('progressBarFill').style.width = '0%';
             document.getElementById('downloadStats').innerHTML = `📐 ${Math.floor(totalTilesToDownload / 1000)}k tiles dentro del área rural...`;
             
-            // Descargar en batches
             const BATCH_SIZE = 5;
             for (let i = 0; i < allTiles.length && !downloadCancelled; i += BATCH_SIZE) {
                 const batch = allTiles.slice(i, i + BATCH_SIZE);
@@ -665,7 +618,6 @@
                 document.getElementById('downloadSpeed').innerHTML = `⚡ ${speed.toFixed(1)} tiles/seg`;
                 document.getElementById('downloadStats').innerHTML = `📥 ${Math.floor(downloadedTilesCount / 1000)}k / ${Math.floor(totalTilesToDownload / 1000)}k tiles`;
                 
-                // Pequeña pausa para no saturar
                 await new Promise(r => setTimeout(r, 50));
             }
             
@@ -718,7 +670,6 @@
                 attributionControl: false
             });
             
-            // Usar el tile layer con caché offline
             tileLayer = createOfflineFirstTileLayer();
             tileLayer.addTo(map);
             
