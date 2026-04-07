@@ -133,6 +133,14 @@
         .install-btn { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
         .later-btn { background: transparent; color: #ddd; border: 1px solid #ddd; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
         
+        /* Estilo para el control de zoom cuando está offline */
+        .leaflet-control-zoom a.leaflet-disabled {
+            background-color: #ccc;
+            color: #666;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        
         @media (max-width: 768px) {
             .form-container { width: 95%; max-height: 85vh; }
             .categories { grid-template-columns: repeat(2, 1fr); }
@@ -330,10 +338,14 @@
         const SHEETBEST_API = 'https://api.sheetbest.com/sheets/f541beca-e53f-4201-8d8f-feb75f92509b';
         const APP_VERSION = '1.0.0';
         
-        // OpenStreetMap estándar - el más confiable y compatible
-        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15];
+        // Descarga hasta zoom 16 (balance perfecto)
+        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15, 16];
         const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         const SUBDOMAINS = ['a', 'b', 'c'];
+        
+        // Límites de zoom
+        const MAX_ZOOM_ONLINE = 20;
+        const MAX_ZOOM_OFFLINE = 16;
         
         // ==================== VARIABLES GLOBALES ====================
         let map, mapSelector, markersLayer, kmlPolygons = [];
@@ -350,6 +362,7 @@
         let kmlBounds = null;
         let kmlPolygonsData = [];
         let tileLayer = null;
+        let originalMaxZoom = MAX_ZOOM_ONLINE;
         
         // DB y descarga
         let db = null;
@@ -496,7 +509,44 @@
             });
         }
         
-        // ==================== TILE LAYER CON CACHÉ PARA OPENSTREETMAP ====================
+        // ==================== FUNCIONES DE CONTROL DE ZOOM ====================
+        function updateZoomLimits() {
+            if (!map) return;
+            
+            if (!isOnline) {
+                // Modo offline - limitar zoom a 16
+                map.options.maxZoom = MAX_ZOOM_OFFLINE;
+                if (map.getZoom() > MAX_ZOOM_OFFLINE) {
+                    map.setZoom(MAX_ZOOM_OFFLINE);
+                }
+                // Mostrar aviso en los controles de zoom (deshabilitar el botón de zoom+)
+                const zoomInButton = document.querySelector('.leaflet-control-zoom-in');
+                if (zoomInButton && !zoomInButton.classList.contains('leaflet-disabled')) {
+                    zoomInButton.classList.add('leaflet-disabled');
+                    zoomInButton.title = 'Zoom limitado a 16 en modo offline';
+                }
+                const zoomOutButton = document.querySelector('.leaflet-control-zoom-out');
+                if (zoomOutButton) {
+                    zoomOutButton.classList.remove('leaflet-disabled');
+                }
+            } else {
+                // Modo online - zoom normal hasta 20
+                map.options.maxZoom = MAX_ZOOM_ONLINE;
+                const zoomInButton = document.querySelector('.leaflet-control-zoom-in');
+                if (zoomInButton) {
+                    zoomInButton.classList.remove('leaflet-disabled');
+                    zoomInButton.title = 'Zoom in';
+                }
+            }
+        }
+        
+        function checkZoomAndWarn() {
+            if (!isOnline && map.getZoom() >= MAX_ZOOM_OFFLINE) {
+                showToast('🔍 Zoom máximo en modo offline. Conectate a internet para más detalle.', 'warning');
+            }
+        }
+        
+        // ==================== TILE LAYER CON CACHÉ ====================
         function createOfflineFirstTileLayer() {
             const OfflineTileLayer = L.TileLayer.extend({
                 getTileUrl: function(coords) {
@@ -549,7 +599,8 @@
             });
             
             return new OfflineTileLayer(TILE_URL, {
-                maxZoom: 20,
+                maxZoom: MAX_ZOOM_ONLINE,
+                minZoom: 10,
                 subdomains: SUBDOMAINS,
                 crossOrigin: true,
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -583,8 +634,8 @@
             
             const stats = await getDownloadStats();
             const confirmMsg = stats.count > 0 
-                ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados. ¿Querés actualizar?`
-                : `📱 DESCARGA INTELIGENTE:\n\nSolo se descargarán los tiles DENTRO del área rural.\n\nEsto ocupa aproximadamente 20-30 MB.\n\n¿Continuar?`;
+                ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados (zoom hasta 16). ¿Querés actualizar?`
+                : `📱 DESCARGA INTELIGENTE:\n\nSe descargarán los tiles DENTRO del área rural.\n\nNiveles de zoom: 10 al 16 (buen detalle para offline)\nEspacio aproximado: 40-50 MB\n\n¿Continuar?`;
             
             if (!confirm(confirmMsg)) return;
             
@@ -602,7 +653,7 @@
             
             document.getElementById('downloadProgressOverlay').style.display = 'flex';
             document.getElementById('progressBarFill').style.width = '0%';
-            document.getElementById('downloadStats').innerHTML = `📐 ${Math.floor(totalTilesToDownload / 1000)}k tiles dentro del área rural...`;
+            document.getElementById('downloadStats').innerHTML = `📐 ${Math.floor(totalTilesToDownload / 1000)}k tiles dentro del área rural (zoom 10-16)...`;
             
             const BATCH_SIZE = 5;
             for (let i = 0; i < allTiles.length && !downloadCancelled; i += BATCH_SIZE) {
@@ -649,14 +700,14 @@
                 offlineInfo.style.display = 'flex';
                 const dateStr = stats.lastDownload ? new Date(stats.lastDownload).toLocaleDateString() : 'desconocida';
                 const sizeMB = (stats.count * 0.5 / 1024).toFixed(1);
-                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - ${dateStr})`;
+                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - zoom 10-16)`;
                 downloadBtn.classList.add('downloaded');
                 downloadBtn.title = 'Actualizar mapa offline';
                 downloadBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
             } else {
                 offlineInfo.style.display = 'none';
                 downloadBtn.classList.remove('downloaded');
-                downloadBtn.title = 'Descargar mapa rural';
+                downloadBtn.title = 'Descargar mapa rural (zoom 10-16)';
                 downloadBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
             }
         }
@@ -673,7 +724,16 @@
             tileLayer = createOfflineFirstTileLayer();
             tileLayer.addTo(map);
             
+            // Escuchar eventos de zoom para mostrar aviso
+            map.on('zoomend', function() {
+                checkZoomAndWarn();
+                updateZoomLimits();
+            });
+            
             markersLayer = L.layerGroup().addTo(map);
+            
+            // Aplicar límites de zoom según estado de conexión
+            updateZoomLimits();
         }
         
         function initMapSelector() {
@@ -1066,11 +1126,12 @@
                 statusDiv.style.display = 'flex';
             } else {
                 statusDiv.className = 'connection-status offline';
-                statusDiv.innerHTML = '<i class="fas fa-signal-slash"></i> Sin conexión';
+                statusDiv.innerHTML = '<i class="fas fa-signal-slash"></i> Sin conexión - Zoom máximo 16';
                 submitBtn.textContent = 'Guardar Localmente';
                 statusDiv.style.display = 'flex';
             }
             updateSyncButton();
+            updateZoomLimits();
         }
         
         function addSyncButton() {
@@ -1123,8 +1184,21 @@
         }
         
         // ==================== INICIALIZACIÓN PRINCIPAL ====================
-        window.addEventListener('online', () => { isOnline = true; updateConnectionStatus(); showToast('✅ Conexión restablecida'); syncPendingReports(); });
-        window.addEventListener('offline', () => { isOnline = false; updateConnectionStatus(); showToast('⚠️ Sin conexión - Usando mapa offline', 'warning'); });
+        window.addEventListener('online', () => { 
+            isOnline = true; 
+            updateConnectionStatus(); 
+            showToast('✅ Conexión restablecida - Zoom disponible hasta 20', 'success');
+            updateZoomLimits();
+            syncPendingReports(); 
+        });
+        
+        window.addEventListener('offline', () => { 
+            isOnline = false; 
+            updateConnectionStatus(); 
+            showToast('⚠️ Sin conexión - Zoom limitado a 16', 'warning');
+            updateZoomLimits();
+        });
+        
         window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (!isAppInstalled) setTimeout(() => showInstallBanner(), 5000); });
         
         document.addEventListener('DOMContentLoaded', async () => {
