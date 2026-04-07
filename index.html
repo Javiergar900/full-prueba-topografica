@@ -104,6 +104,7 @@
         .progress-bar-bg { background: #e0e0e0; border-radius: 10px; height: 20px; overflow: hidden; margin: 20px 0; }
         .progress-bar-fill { background: linear-gradient(135deg, #27ae60, #219653); width: 0%; height: 100%; transition: width 0.3s; }
         .download-stats { font-size: 13px; color: #666; margin: 8px 0; }
+        .download-stats-zoom { font-size: 12px; color: #3498db; font-weight: bold; margin: 5px 0; }
         .cancel-download-btn { background: #e74c3c; color: white; border: none; padding: 12px 20px; border-radius: 8px; margin-top: 15px; cursor: pointer; }
         
         .offline-info { position: fixed; bottom: 90px; left: 20px; background: rgba(0,0,0,0.75); color: white; padding: 6px 12px; border-radius: 20px; font-size: 11px; z-index: 800; display: flex; align-items: center; gap: 6px; backdrop-filter: blur(4px); }
@@ -133,14 +134,6 @@
         .install-btn { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
         .later-btn { background: transparent; color: #ddd; border: 1px solid #ddd; padding: 8px 15px; border-radius: 6px; cursor: pointer; }
         
-        /* Estilo para el control de zoom cuando está offline */
-        .leaflet-control-zoom a.leaflet-disabled {
-            background-color: #ccc;
-            color: #666;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-        
         @media (max-width: 768px) {
             .form-container { width: 95%; max-height: 85vh; }
             .categories { grid-template-columns: repeat(2, 1fr); }
@@ -163,7 +156,7 @@
         </div>
         <button class="fab" onclick="showForm()"><i class="fas fa-plus"></i></button>
         <button class="view-reports-btn" onclick="toggleReports()" title="Ver mis reportes"><i class="fas fa-list"></i></button>
-        <button class="download-offline-btn" id="downloadOfflineBtn" onclick="startOfflineDownload()" title="Descargar mapa para usar sin internet"><i class="fas fa-cloud-download-alt"></i></button>
+        <button class="download-offline-btn" id="downloadOfflineBtn" onclick="startOfflineDownload()" title="Descargar mapa completo (zoom 10 a 20)"><i class="fas fa-cloud-download-alt"></i></button>
         <div id="connectionStatus" class="connection-status" style="display: none;"></div>
         <div class="offline-info" id="offlineInfo" style="display: none;"><i class="fas fa-download"></i> <span id="offlineInfoText">Mapa descargado</span></div>
     </div>
@@ -293,7 +286,8 @@
         <div class="download-progress-container">
             <div class="download-progress-title"><i class="fas fa-cloud-download-alt"></i> Descargando mapa offline</div>
             <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBarFill"></div></div>
-            <div class="download-stats" id="downloadStats">Preparando descarga...</div>
+            <div class="download-stats-zoom" id="currentZoomLevel">Preparando...</div>
+            <div class="download-stats" id="downloadStats">Calculando tiles...</div>
             <div class="download-stats" id="downloadSpeed"></div>
             <button class="cancel-download-btn" onclick="cancelDownload()"><i class="fas fa-times"></i> Cancelar</button>
         </div>
@@ -338,14 +332,10 @@
         const SHEETBEST_API = 'https://api.sheetbest.com/sheets/f541beca-e53f-4201-8d8f-feb75f92509b';
         const APP_VERSION = '1.0.0';
         
-        // Descarga hasta zoom 16 (balance perfecto)
-        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15, 16];
+        // Descarga COMPLETA hasta zoom 20
+        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
         const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         const SUBDOMAINS = ['a', 'b', 'c'];
-        
-        // Límites de zoom
-        const MAX_ZOOM_ONLINE = 20;
-        const MAX_ZOOM_OFFLINE = 16;
         
         // ==================== VARIABLES GLOBALES ====================
         let map, mapSelector, markersLayer, kmlPolygons = [];
@@ -362,7 +352,6 @@
         let kmlBounds = null;
         let kmlPolygonsData = [];
         let tileLayer = null;
-        let originalMaxZoom = MAX_ZOOM_ONLINE;
         
         // DB y descarga
         let db = null;
@@ -371,6 +360,7 @@
         let downloadedTilesCount = 0;
         let totalTilesToDownload = 0;
         let downloadStartTime = 0;
+        let currentZoomIndex = 0;
         
         const categoryDetails = {
             robo: ['Robo de campo', 'Robo de vehículo', 'Robo de herramientas', 'Hurto menor', 'Robo con violencia', 'Otro'],
@@ -509,43 +499,6 @@
             });
         }
         
-        // ==================== FUNCIONES DE CONTROL DE ZOOM ====================
-        function updateZoomLimits() {
-            if (!map) return;
-            
-            if (!isOnline) {
-                // Modo offline - limitar zoom a 16
-                map.options.maxZoom = MAX_ZOOM_OFFLINE;
-                if (map.getZoom() > MAX_ZOOM_OFFLINE) {
-                    map.setZoom(MAX_ZOOM_OFFLINE);
-                }
-                // Mostrar aviso en los controles de zoom (deshabilitar el botón de zoom+)
-                const zoomInButton = document.querySelector('.leaflet-control-zoom-in');
-                if (zoomInButton && !zoomInButton.classList.contains('leaflet-disabled')) {
-                    zoomInButton.classList.add('leaflet-disabled');
-                    zoomInButton.title = 'Zoom limitado a 16 en modo offline';
-                }
-                const zoomOutButton = document.querySelector('.leaflet-control-zoom-out');
-                if (zoomOutButton) {
-                    zoomOutButton.classList.remove('leaflet-disabled');
-                }
-            } else {
-                // Modo online - zoom normal hasta 20
-                map.options.maxZoom = MAX_ZOOM_ONLINE;
-                const zoomInButton = document.querySelector('.leaflet-control-zoom-in');
-                if (zoomInButton) {
-                    zoomInButton.classList.remove('leaflet-disabled');
-                    zoomInButton.title = 'Zoom in';
-                }
-            }
-        }
-        
-        function checkZoomAndWarn() {
-            if (!isOnline && map.getZoom() >= MAX_ZOOM_OFFLINE) {
-                showToast('🔍 Zoom máximo en modo offline. Conectate a internet para más detalle.', 'warning');
-            }
-        }
-        
         // ==================== TILE LAYER CON CACHÉ ====================
         function createOfflineFirstTileLayer() {
             const OfflineTileLayer = L.TileLayer.extend({
@@ -599,7 +552,7 @@
             });
             
             return new OfflineTileLayer(TILE_URL, {
-                maxZoom: MAX_ZOOM_ONLINE,
+                maxZoom: 20,
                 minZoom: 10,
                 subdomains: SUBDOMAINS,
                 crossOrigin: true,
@@ -607,7 +560,7 @@
             });
         }
         
-        // ==================== DESCARGA DE TILES ====================
+        // ==================== DESCARGA DE TILES CON CICLO POR ZOOM ====================
         async function downloadTile(zoom, x, y) {
             const subdomain = SUBDOMAINS[Math.floor(Math.random() * SUBDOMAINS.length)];
             const url = TILE_URL.replace('{s}', subdomain).replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
@@ -633,43 +586,64 @@
             }
             
             const stats = await getDownloadStats();
+            const sizeEstimate = 85; // MB estimados para zoom 10-20
             const confirmMsg = stats.count > 0 
-                ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados (zoom hasta 16). ¿Querés actualizar?`
-                : `📱 DESCARGA INTELIGENTE:\n\nSe descargarán los tiles DENTRO del área rural.\n\nNiveles de zoom: 10 al 16 (buen detalle para offline)\nEspacio aproximado: 40-50 MB\n\n¿Continuar?`;
+                ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados. ¿Querés actualizar a zoom 20? (${sizeEstimate} MB aprox)`
+                : `📱 DESCARGA COMPLETA (Zoom 10 a 20):\n\nSe descargarán TODOS los niveles de zoom hasta 20.\n\n⚠️ Espacio aproximado: ${sizeEstimate} MB\n⏱️ Tiempo estimado: 5-10 minutos (depende la conexión)\n\n¿Continuar?`;
             
             if (!confirm(confirmMsg)) return;
             
             isDownloading = true;
             downloadCancelled = false;
             downloadedTilesCount = 0;
+            totalTilesToDownload = 0;
             downloadStartTime = Date.now();
-            
-            const allTiles = [];
-            for (const zoom of TILE_ZOOM_LEVELS) {
-                const tiles = getTilesInsideKML(kmlBounds, zoom);
-                allTiles.push(...tiles);
-            }
-            totalTilesToDownload = allTiles.length;
+            currentZoomIndex = 0;
             
             document.getElementById('downloadProgressOverlay').style.display = 'flex';
-            document.getElementById('progressBarFill').style.width = '0%';
-            document.getElementById('downloadStats').innerHTML = `📐 ${Math.floor(totalTilesToDownload / 1000)}k tiles dentro del área rural (zoom 10-16)...`;
             
-            const BATCH_SIZE = 5;
-            for (let i = 0; i < allTiles.length && !downloadCancelled; i += BATCH_SIZE) {
-                const batch = allTiles.slice(i, i + BATCH_SIZE);
-                const results = await Promise.all(batch.map(t => downloadTile(t.zoom, t.x, t.y)));
-                const successCount = results.filter(r => r === true).length;
-                downloadedTilesCount += successCount;
+            // Calcular total de tiles primero
+            let allTilesByZoom = [];
+            for (const zoom of TILE_ZOOM_LEVELS) {
+                if (downloadCancelled) break;
+                const tiles = getTilesInsideKML(kmlBounds, zoom);
+                allTilesByZoom.push({ zoom, tiles });
+                totalTilesToDownload += tiles.length;
+            }
+            
+            let accumulatedDownloaded = 0;
+            
+            // Descargar por niveles de zoom (ciclo)
+            for (let idx = 0; idx < allTilesByZoom.length && !downloadCancelled; idx++) {
+                const { zoom, tiles } = allTilesByZoom[idx];
+                currentZoomIndex = zoom;
                 
-                const percent = (downloadedTilesCount / totalTilesToDownload) * 100;
-                document.getElementById('progressBarFill').style.width = `${percent}%`;
-                const elapsed = (Date.now() - downloadStartTime) / 1000;
-                const speed = downloadedTilesCount / elapsed;
-                document.getElementById('downloadSpeed').innerHTML = `⚡ ${speed.toFixed(1)} tiles/seg`;
-                document.getElementById('downloadStats').innerHTML = `📥 ${Math.floor(downloadedTilesCount / 1000)}k / ${Math.floor(totalTilesToDownload / 1000)}k tiles`;
+                document.getElementById('currentZoomLevel').innerHTML = `📍 Nivel de zoom ${zoom} - ${Math.floor(tiles.length / 1000)}k tiles`;
+                document.getElementById('progressBarFill').style.width = `${(accumulatedDownloaded / totalTilesToDownload) * 100}%`;
                 
-                await new Promise(r => setTimeout(r, 50));
+                const BATCH_SIZE = 5;
+                let zoomDownloaded = 0;
+                
+                for (let i = 0; i < tiles.length && !downloadCancelled; i += BATCH_SIZE) {
+                    const batch = tiles.slice(i, i + BATCH_SIZE);
+                    const results = await Promise.all(batch.map(t => downloadTile(t.zoom, t.x, t.y)));
+                    const successCount = results.filter(r => r === true).length;
+                    zoomDownloaded += successCount;
+                    accumulatedDownloaded += successCount;
+                    downloadedTilesCount = accumulatedDownloaded;
+                    
+                    const percent = (accumulatedDownloaded / totalTilesToDownload) * 100;
+                    document.getElementById('progressBarFill').style.width = `${percent}%`;
+                    const elapsed = (Date.now() - downloadStartTime) / 1000;
+                    const speed = accumulatedDownloaded / elapsed;
+                    document.getElementById('downloadSpeed').innerHTML = `⚡ ${speed.toFixed(1)} tiles/seg`;
+                    document.getElementById('downloadStats').innerHTML = `📥 ${Math.floor(accumulatedDownloaded / 1000)}k / ${Math.floor(totalTilesToDownload / 1000)}k tiles totales`;
+                    
+                    await new Promise(r => setTimeout(r, 30));
+                }
+                
+                document.getElementById('downloadStats').innerHTML = `✅ Zoom ${zoom} completado (${Math.floor(zoomDownloaded / 1000)}k tiles)`;
+                await new Promise(r => setTimeout(r, 500));
             }
             
             isDownloading = false;
@@ -681,7 +655,7 @@
                 localStorage.setItem('offline_map_downloaded', Date.now().toString());
                 await updateOfflineInfo();
                 const totalMB = (downloadedTilesCount * 0.5 / 1024).toFixed(1);
-                showToast(`✅ Mapa descargado! ${Math.floor(downloadedTilesCount / 1000)}k tiles - ${totalMB} MB`, 'success');
+                showToast(`✅ Mapa COMPLETO descargado! ${Math.floor(downloadedTilesCount / 1000)}k tiles - ${totalMB} MB - Zoom hasta 20 disponible offline`, 'success');
             }
         }
         
@@ -700,14 +674,14 @@
                 offlineInfo.style.display = 'flex';
                 const dateStr = stats.lastDownload ? new Date(stats.lastDownload).toLocaleDateString() : 'desconocida';
                 const sizeMB = (stats.count * 0.5 / 1024).toFixed(1);
-                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - zoom 10-16)`;
+                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - zoom 10-20)`;
                 downloadBtn.classList.add('downloaded');
-                downloadBtn.title = 'Actualizar mapa offline';
+                downloadBtn.title = 'Actualizar mapa offline (zoom 10-20)';
                 downloadBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
             } else {
                 offlineInfo.style.display = 'none';
                 downloadBtn.classList.remove('downloaded');
-                downloadBtn.title = 'Descargar mapa rural (zoom 10-16)';
+                downloadBtn.title = 'Descargar mapa COMPLETO (zoom 10 a 20)';
                 downloadBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
             }
         }
@@ -716,24 +690,17 @@
         function initMap() {
             map = L.map('map', {
                 center: CHASCOMUS_COORD,
-                zoom: 12,
+                zoom: 14,
                 zoomControl: true,
-                attributionControl: false
+                attributionControl: false,
+                maxZoom: 20,
+                minZoom: 10
             });
             
             tileLayer = createOfflineFirstTileLayer();
             tileLayer.addTo(map);
             
-            // Escuchar eventos de zoom para mostrar aviso
-            map.on('zoomend', function() {
-                checkZoomAndWarn();
-                updateZoomLimits();
-            });
-            
             markersLayer = L.layerGroup().addTo(map);
-            
-            // Aplicar límites de zoom según estado de conexión
-            updateZoomLimits();
         }
         
         function initMapSelector() {
@@ -1126,12 +1093,11 @@
                 statusDiv.style.display = 'flex';
             } else {
                 statusDiv.className = 'connection-status offline';
-                statusDiv.innerHTML = '<i class="fas fa-signal-slash"></i> Sin conexión - Zoom máximo 16';
+                statusDiv.innerHTML = '<i class="fas fa-signal-slash"></i> Sin conexión - Modo offline completo';
                 submitBtn.textContent = 'Guardar Localmente';
                 statusDiv.style.display = 'flex';
             }
             updateSyncButton();
-            updateZoomLimits();
         }
         
         function addSyncButton() {
@@ -1187,16 +1153,14 @@
         window.addEventListener('online', () => { 
             isOnline = true; 
             updateConnectionStatus(); 
-            showToast('✅ Conexión restablecida - Zoom disponible hasta 20', 'success');
-            updateZoomLimits();
+            showToast('✅ Conexión restablecida', 'success');
             syncPendingReports(); 
         });
         
         window.addEventListener('offline', () => { 
             isOnline = false; 
             updateConnectionStatus(); 
-            showToast('⚠️ Sin conexión - Zoom limitado a 16', 'warning');
-            updateZoomLimits();
+            showToast('⚠️ Sin conexión - Usando mapa offline (zoom hasta 20 disponible)', 'warning');
         });
         
         window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (!isAppInstalled) setTimeout(() => showInstallBanner(), 5000); });
