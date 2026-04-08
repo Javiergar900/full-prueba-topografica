@@ -349,8 +349,8 @@
         const SHEETBEST_API = 'https://api.sheetbest.com/sheets/f541beca-e53f-4201-8d8f-feb75f92509b';
         const APP_VERSION = '1.0.0';
         
-        // Zoom óptimo: 10 a 16 (40-50 MB)
-        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15];
+        // Zoom: 10 a 16 (óptimo para offline)
+        const TILE_ZOOM_LEVELS = [10, 11, 12, 13, 14, 15, 16];
         const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         const SUBDOMAINS = ['a', 'b', 'c'];
         
@@ -387,31 +387,10 @@
             otros: ['Problema con vecinos', 'Servicios públicos', 'Caminos en mal estado', 'Inundación', 'Evento climático', 'Otro']
         };
         
-        // ==================== FUNCIONES GEOMÉTRICAS ====================
-        function isPointInPolygon(point, polygon) {
-            let inside = false;
-            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-                const xi = polygon[i][0], yi = polygon[i][1];
-                const xj = polygon[j][0], yj = polygon[j][1];
-                const intersect = ((yi > point.lat) != (yj > point.lat)) &&
-                    (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
-                if (intersect) inside = !inside;
-            }
-            return inside;
-        }
-        
-        function getTileBounds(zoom, x, y) {
-            const n = Math.pow(2, zoom);
-            const lngWest = (x / n) * 360 - 180;
-            const lngEast = ((x + 1) / n) * 360 - 180;
-            const latNorth = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180 / Math.PI;
-            const latSouth = Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n))) * 180 / Math.PI;
-            return L.latLngBounds([latSouth, lngWest], [latNorth, lngEast]);
-        }
-        
-        // ==================== FUNCIÓN CORREGIDA - DESCARGA TODOS LOS TILES DEL RECTÁNGULO ====================
+        // ==================== FUNCIÓN CORREGIDA - CON PADDING DINÁMICO ====================
         function getTilesInsideKML(bounds, zoom) {
             const tiles = [];
+            
             function latLngToTile(lat, lng, zoom) {
                 const latRad = lat * Math.PI / 180;
                 const n = Math.pow(2, zoom);
@@ -420,8 +399,12 @@
                 return { x, y };
             }
             
-            // Padding de 2 tiles para cubrir bordes (evita grises al hacer zoom)
-            const padding = 2;
+            // PADDING DINÁMICO: más padding en zooms altos para evitar bordes grises
+            let padding = 2;
+            if (zoom >= 14) padding = 3;
+            if (zoom >= 15) padding = 4;
+            if (zoom >= 16) padding = 5;
+            
             const topLeft = latLngToTile(bounds.getNorth(), bounds.getWest(), zoom);
             const bottomRight = latLngToTile(bounds.getSouth(), bounds.getEast(), zoom);
             
@@ -429,6 +412,8 @@
             const maxX = Math.max(topLeft.x, bottomRight.x) + padding;
             const minY = Math.min(topLeft.y, bottomRight.y) - padding;
             const maxY = Math.max(topLeft.y, bottomRight.y) + padding;
+            
+            console.log(`📐 Zoom ${zoom}: padding=${padding}, tiles X:${minX}-${maxX}, Y:${minY}-${maxY}`);
             
             for (let x = minX; x <= maxX; x++) {
                 for (let y = minY; y <= maxY; y++) {
@@ -600,7 +585,7 @@
             const stats = await getDownloadStats();
             const confirmMsg = stats.count > 0 
                 ? `Ya tenés ${Math.floor(stats.count / 1000)}k tiles descargados. ¿Querés actualizar?`
-                : `📱 DESCARGA COMPLETA DEL ÁREA RURAL:\n\nSe descargarán TODOS los tiles del área (con bordes incluidos).\n\nNiveles de zoom: 10 al 16\nEspacio aproximado: 50-70 MB\nTiempo estimado: 3-5 minutos\n\n¿Continuar?`;
+                : `📱 DESCARGA COMPLETA DEL ÁREA RURAL:\n\nSe descargarán TODOS los tiles del área con PADDING DINÁMICO (más bordes en zooms altos).\n\nNiveles de zoom: 10 al 16\nEspacio aproximado: 50-70 MB\nTiempo estimado: 3-5 minutos\n\n¿Continuar?`;
             
             if (!confirm(confirmMsg)) return;
             
@@ -625,7 +610,13 @@
             for (let idx = 0; idx < allTilesByZoom.length && !downloadCancelled; idx++) {
                 const { zoom, tiles } = allTilesByZoom[idx];
                 
-                document.getElementById('currentZoomLevel').innerHTML = `📍 Nivel de zoom ${zoom} - ${Math.floor(tiles.length / 1000)}k tiles`;
+                let paddingText = "";
+                if (zoom >= 16) paddingText = "padding:5";
+                else if (zoom >= 15) paddingText = "padding:4";
+                else if (zoom >= 14) paddingText = "padding:3";
+                else paddingText = "padding:2";
+                
+                document.getElementById('currentZoomLevel').innerHTML = `📍 Nivel de zoom ${zoom} (${paddingText}) - ${Math.floor(tiles.length / 1000)}k tiles`;
                 document.getElementById('progressBarFill').style.width = `${(accumulatedDownloaded / totalTilesToDownload) * 100}%`;
                 
                 const BATCH_SIZE = 5;
@@ -681,14 +672,14 @@
                 offlineInfo.style.display = 'flex';
                 const dateStr = stats.lastDownload ? new Date(stats.lastDownload).toLocaleDateString() : 'desconocida';
                 const sizeMB = (stats.count * 0.5 / 1024).toFixed(1);
-                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - área completa)`;
+                document.getElementById('offlineInfoText').innerHTML = `🗺️ Mapa offline: ${Math.floor(stats.count / 1000)}k tiles (${sizeMB} MB - padding dinámico)`;
                 downloadBtn.classList.add('downloaded');
                 downloadBtn.title = 'Actualizar mapa offline';
                 downloadBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
             } else {
                 offlineInfo.style.display = 'none';
                 downloadBtn.classList.remove('downloaded');
-                downloadBtn.title = 'Descargar mapa rural (área completa)';
+                downloadBtn.title = 'Descargar mapa rural (con padding dinámico)';
                 downloadBtn.innerHTML = '<i class="fas fa-cloud-download-alt"></i>';
             }
         }
